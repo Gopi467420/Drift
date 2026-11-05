@@ -105,3 +105,9 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Local leftovers that do not belong in the repo
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
+/Data/
+*_BurstDebugInformation_DoNotShip/
