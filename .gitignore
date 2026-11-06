@@ -111,3 +111,7 @@ InitTestScene*.unity*
 /[Aa]ssets/_Recovery.meta
 /Data/
 *_BurstDebugInformation_DoNotShip/
+
+# Build output from the small tools in Tools/
+/Tools/**/bin/
+/Tools/**/obj/

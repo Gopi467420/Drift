@@ -61,6 +61,7 @@ public class GameManager : MonoBehaviour
     // The one place game speed lives. Nothing else writes to Time.timeScale.
     public float GameSpeed { get; private set; }
     public bool IsPaused { get; private set; }
+    public bool IsSlowMotion => GameSpeed < settings.normalSpeed;
 
     private void Awake()
     {

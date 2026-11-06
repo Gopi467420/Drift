@@ -32,6 +32,8 @@ public class MenuScreens : MonoBehaviour
 
     private readonly List<GameObject> hudObjects = new();
 
+    public bool IsShowingGameOver => gameOverPanel.activeSelf;
+
     private void Awake()
     {
         Instance = this;
