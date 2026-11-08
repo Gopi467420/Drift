@@ -1,287 +1,194 @@
-
 using System.Collections.Generic;
 using UnityEngine;
 
+// Echoes of the player, left behind only when it moves. Each one stays where it was
+// dropped, glitches, and slowly fades away. Use it with the Custom/GhostEcho material.
+// Real time, so the game's 3x speed doesn't rush them, and they hold still while paused.
 public class GhostTrail : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private Renderer[] sourceRenderers;
+    [Tooltip("A Custom/GhostEcho material.")]
     [SerializeField] private Material ghostMaterial;
 
-    [Header("Trail Settings")]
-    [Min(0.01f)]
-    [SerializeField] private float trailLength = 10f;
+    [Header("Echoes")]
+    [Tooltip("An echo drops each time the player moves this far. Standing still leaves none.")]
+    [SerializeField, Min(0.1f)] private float moveSpacing = 6f;
+    [Tooltip("Seconds an echo takes to fade away.")]
+    [SerializeField, Min(0.1f)] private float lifetime = 1.3f;
+    [Tooltip("Most echoes at once. When it runs out, the oldest one is reused.")]
+    [SerializeField, Min(1)] private int maxEchoes = 40;
+    [Tooltip("Size at the end of its life, against the player. 1 keeps it the same.")]
+    [SerializeField, Min(0.1f)] private float endScale = 1f;
 
-    [Min(0.01f)]
-    [SerializeField] private float ghostSpacing = 5f;
+    private static readonly int FadeID = Shader.PropertyToID("_Fade");
+    private static readonly int SeedID = Shader.PropertyToID("_Seed");
 
-    [Header("Appearance")]
-    [Range(0f, 1f)]
-    [SerializeField] private float startOpacity = 1f;
-
-    [Header("Fade Settings")]
-    [Min(0.01f)]
-    [SerializeField] private float ghostFadeDuration = 2f;
-
-    private class Ghost
+    private class Echo
     {
         public GameObject root;
-        public readonly List<Material> materials = new();
-        public readonly List<Color> originalColors = new();
-        public readonly List<Mesh> bakedMeshes = new();
-
+        public readonly List<Transform> parts = new();
+        public readonly List<Vector3> sizes = new();
+        public readonly List<MeshRenderer> renderers = new();
+        public float seed;
         public float age;
     }
 
-    private readonly Queue<Ghost> availableGhosts = new();
-    private readonly List<Ghost> activeGhosts = new();
-
+    private readonly Queue<Echo> free = new();
+    private readonly List<Echo> active = new();
+    private MaterialPropertyBlock block;
     private Vector3 lastPosition;
-    private float distanceAccumulator;
-
-    private float cachedTrailLength;
-    private float cachedSpacing;
-
-    private static readonly int BaseColor =
-        Shader.PropertyToID("_BaseColor");
+    private float moved;
 
     private void Awake()
     {
         if (sourceRenderers == null || sourceRenderers.Length == 0)
             sourceRenderers = GetComponentsInChildren<Renderer>();
 
-        RebuildPool();
+        block = new MaterialPropertyBlock();
+
+        if (ghostMaterial == null) return;
+
+        for (int i = 0; i < maxEchoes; i++) free.Enqueue(CreateEcho());
+
         lastPosition = transform.position;
+    }
+
+    private Echo CreateEcho()
+    {
+        var echo = new Echo { root = new GameObject("Echo") };
+        echo.root.SetActive(false);
+
+        foreach (Renderer source in sourceRenderers)
+        {
+            if (source == null || !source.TryGetComponent(out MeshFilter sourceFilter)) continue;
+
+            var part = new GameObject(source.name);
+            part.transform.SetParent(echo.root.transform, false);
+            part.AddComponent<MeshFilter>().sharedMesh = sourceFilter.sharedMesh;
+
+            var renderer = part.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = ghostMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            echo.parts.Add(part.transform);
+            echo.sizes.Add(Vector3.one);
+            echo.renderers.Add(renderer);
+        }
+
+        return echo;
     }
 
     private void Update()
     {
-        CheckSettings();
-        UpdateTrail();
-    }
+        if (ghostMaterial == null) return;
 
-    private void CheckSettings()
-    {
-        if (Mathf.Approximately(trailLength, cachedTrailLength) &&
-            Mathf.Approximately(ghostSpacing, cachedSpacing))
+        GameManager game = GameManager.Instance;
+
+        // No echoes on the menus, in the intro, or once the run has ended.
+        if (game == null || !game.IsPlaying)
+        {
+            ClearAll();
+            lastPosition = transform.position;
             return;
+        }
 
-        RebuildPool();
+        if (game.IsPaused) return;
+
+        float deltaTime = Time.unscaledDeltaTime;
+
+        for (int i = active.Count - 1; i >= 0; i--)
+        {
+            Echo echo = active[i];
+            echo.age += deltaTime;
+
+            if (echo.age >= lifetime)
+            {
+                Release(i);
+                continue;
+            }
+
+            Animate(echo, deltaTime);
+        }
+
+        moved += Vector3.Distance(transform.position, lastPosition);
         lastPosition = transform.position;
+
+        if (moved >= moveSpacing)
+        {
+            moved = 0f;
+            Spawn();
+        }
     }
 
-    private void RebuildPool()
+    private void Spawn()
     {
-        ClearPool();
+        // When the pool runs out, the oldest echo is reused.
+        Echo echo = free.Count > 0 ? free.Dequeue() : TakeOldest();
+        if (echo == null) return;
 
-        trailLength = Mathf.Max(0.01f, trailLength);
-        ghostSpacing = Mathf.Max(0.01f, ghostSpacing);
-        ghostFadeDuration = Mathf.Max(0.01f, ghostFadeDuration);
-
-        cachedTrailLength = trailLength;
-        cachedSpacing = ghostSpacing;
-
-        if (ghostMaterial == null || sourceRenderers == null)
-            return;
-
-        int poolSize = Mathf.Max(
-            1,
-            Mathf.CeilToInt(trailLength / ghostSpacing)
-        );
-
-        for (int i = 0; i < poolSize; i++)
-            availableGhosts.Enqueue(CreateGhost());
-
-        distanceAccumulator = 0f;
-    }
-
-    private Ghost CreateGhost()
-    {
-        Ghost ghost = new Ghost();
-
-        ghost.root = new GameObject("Ghost");
-        ghost.root.SetActive(false);
+        int part = 0;
 
         foreach (Renderer source in sourceRenderers)
         {
-            if (source == null)
-                continue;
+            if (source == null || part >= echo.parts.Count) continue;
 
-            GameObject ghostObject = new GameObject(source.name);
-            ghostObject.transform.SetParent(ghost.root.transform);
-
-            MeshFilter filter = ghostObject.AddComponent<MeshFilter>();
-            MeshRenderer renderer = ghostObject.AddComponent<MeshRenderer>();
-
-            Material material = new Material(ghostMaterial);
-
-            ghost.materials.Add(material);
-            ghost.originalColors.Add(
-                material.HasProperty(BaseColor)
-                    ? material.GetColor(BaseColor)
-                    : Color.white
-            );
-
-            renderer.sharedMaterial = material;
-
-            if (source is SkinnedMeshRenderer)
-            {
-                Mesh mesh = new Mesh();
-                filter.sharedMesh = mesh;
-                ghost.bakedMeshes.Add(mesh);
-            }
-            else
-            {
-                MeshFilter sourceFilter = source.GetComponent<MeshFilter>();
-
-                filter.sharedMesh = sourceFilter != null
-                    ? sourceFilter.sharedMesh
-                    : null;
-
-                ghost.bakedMeshes.Add(null);
-            }
+            echo.parts[part].SetPositionAndRotation(source.transform.position, source.transform.rotation);
+            echo.sizes[part] = source.transform.lossyScale;
+            echo.parts[part].localScale = echo.sizes[part];
+            part++;
         }
 
-        return ghost;
+        echo.seed = Random.Range(0f, 100f);
+        echo.age = 0f;
+        echo.root.SetActive(true);
+        active.Add(echo);
+
+        Animate(echo, 0f);
     }
 
-    private void UpdateTrail()
+    private void Animate(Echo echo, float deltaTime)
     {
-        Vector3 currentPosition = transform.position;
+        float life = echo.age / lifetime;
+        float fade = 1f - life * life;
+        float size = Mathf.Lerp(1f, endScale, life);
 
-        float movementDistance = Vector3.Distance(
-            currentPosition,
-            lastPosition
-        );
+        block.SetFloat(FadeID, fade);
+        block.SetFloat(SeedID, echo.seed);
 
-        lastPosition = currentPosition;
-
-        distanceAccumulator += movementDistance;
-
-        // Fade each ghost independently over time.
-        for (int i = activeGhosts.Count - 1; i >= 0; i--)
+        for (int i = 0; i < echo.parts.Count; i++)
         {
-            Ghost ghost = activeGhosts[i];
-
-            ghost.age += Time.deltaTime;
-
-            float fadeProgress = Mathf.Clamp01(
-                ghost.age / ghostFadeDuration
-            );
-
-            float opacity = Mathf.Lerp(
-                startOpacity,
-                0f,
-                fadeProgress
-            );
-
-            SetGhostOpacity(ghost, opacity);
-
-            if (ghost.age >= ghostFadeDuration)
-            {
-                ghost.root.SetActive(false);
-
-                activeGhosts.RemoveAt(i);
-                availableGhosts.Enqueue(ghost);
-            }
-        }
-
-        // Spawn at consistent distance intervals.
-        while (distanceAccumulator >= ghostSpacing)
-        {
-            distanceAccumulator -= ghostSpacing;
-            SpawnGhost();
+            echo.parts[i].localScale = echo.sizes[i] * size;
+            echo.renderers[i].SetPropertyBlock(block);
         }
     }
 
-    private void SpawnGhost()
+    private Echo TakeOldest()
     {
-        if (availableGhosts.Count == 0)
-            return;
+        if (active.Count == 0) return null;
 
-        Ghost ghost = availableGhosts.Dequeue();
-
-        CaptureGhost(ghost);
-
-        ghost.age = 0f;
-        ghost.root.SetActive(true);
-
-        SetGhostOpacity(ghost, startOpacity);
-
-        activeGhosts.Add(ghost);
+        Echo oldest = active[0];
+        active.RemoveAt(0);
+        return oldest;
     }
 
-    private void CaptureGhost(Ghost ghost)
+    private void Release(int index)
     {
-        int childIndex = 0;
-
-        foreach (Renderer source in sourceRenderers)
-        {
-            if (source == null)
-                continue;
-
-            Transform ghostTransform =
-                ghost.root.transform.GetChild(childIndex);
-
-            ghostTransform.SetPositionAndRotation(
-                source.transform.position,
-                source.transform.rotation
-            );
-
-            ghostTransform.localScale = source.transform.lossyScale;
-
-            if (source is SkinnedMeshRenderer skinnedSource)
-                skinnedSource.BakeMesh(ghost.bakedMeshes[childIndex]);
-
-            childIndex++;
-        }
+        Echo echo = active[index];
+        active.RemoveAt(index);
+        echo.root.SetActive(false);
+        free.Enqueue(echo);
     }
 
-    private void SetGhostOpacity(Ghost ghost, float opacity)
+    private void ClearAll()
     {
-        for (int i = 0; i < ghost.materials.Count; i++)
-        {
-            Material material = ghost.materials[i];
-
-            if (!material.HasProperty(BaseColor))
-                continue;
-
-            Color color = ghost.originalColors[i];
-            color.a *= opacity;
-
-            material.SetColor(BaseColor, color);
-        }
-    }
-
-    private void ClearPool()
-    {
-        foreach (Ghost ghost in availableGhosts)
-            DestroyGhost(ghost);
-
-        foreach (Ghost ghost in activeGhosts)
-            DestroyGhost(ghost);
-
-        availableGhosts.Clear();
-        activeGhosts.Clear();
-    }
-
-    private void DestroyGhost(Ghost ghost)
-    {
-        foreach (Material material in ghost.materials)
-            Destroy(material);
-
-        foreach (Mesh mesh in ghost.bakedMeshes)
-        {
-            if (mesh != null)
-                Destroy(mesh);
-        }
-
-        if (ghost.root != null)
-            Destroy(ghost.root);
+        for (int i = active.Count - 1; i >= 0; i--) Release(i);
     }
 
     private void OnDestroy()
     {
-        ClearPool();
+        foreach (Echo echo in active) if (echo.root != null) Destroy(echo.root);
+        foreach (Echo echo in free) if (echo.root != null) Destroy(echo.root);
     }
 }

@@ -9,7 +9,7 @@ using UnityEngine;
 //   3. critical zone obstacles, placed so they don't overlap anything on blockingMask
 //      (spread over a few frames, so there is no hitch)
 //   4. the ZoneEnd trigger at the bottom of the zone
-//   5. low-detail end zone assets in a ring around the zone end
+//   5. fast edge obstacles in a ring around the whole zone, so going wide is no way around it
 //   6. reward clouds around the zone end
 // WHAT to spawn comes from ObjectPoolManager (it owns every prefab list and pool).
 public class RandomSpawner : MonoBehaviour
@@ -27,10 +27,10 @@ public class RandomSpawner : MonoBehaviour
     [Range(0, 300)][SerializeField] private float specialObstacleClearance = 120f;
 
     [Header("End Zone Assets")]
-    [Range(0, 100)][SerializeField] private int endZoneAssetsPerZone = 12;
+    [Range(0, 300)][SerializeField] private int endZoneAssetsPerZone = 12;
     [Tooltip("The ring starts at Spawn Radius (outside the play area) and is this wide.")]
     [SerializeField] private float endZoneRingWidth = 400f;
-    [Tooltip("Vertical spread of the ring around the zone end.")]
+    [Tooltip("How far the ring reaches below the zone end. It also covers the whole zone above it.")]
     [SerializeField] private float endZoneHeight = 300f;
 
     [Header("Reward Clouds")]
@@ -43,7 +43,10 @@ public class RandomSpawner : MonoBehaviour
 
     [Header("Zone Settings")]
     [SerializeField] private LayerMask blockingMask;
-    [Range(1, 300)][SerializeField] private int obstaclesPerZone = 300;
+    [Tooltip("Tries, not a promise: a try is skipped when it finds no free spot.")]
+    [Range(1, 1000)][SerializeField] private int obstaclesPerZone = 300;
+    [Tooltip("Copies of every obstacle placed first, biggest list entries first. Without this, small ones fill the zone and big ones find no room.")]
+    [Range(0, 10)][SerializeField] private int minOfEachObstacle = 2;
     [SerializeField] private float spawnInterval = 15f;
     [Range(1, 3000)][SerializeField] private float spawnRadius = 450f;
     [Range(1000, 5000)][SerializeField] private float zoneDepth = 1000f;
@@ -82,11 +85,14 @@ public class RandomSpawner : MonoBehaviour
     private float zoneTop;
     private float zoneBottom;
 
-    // Prefab size is the same every time, so it is measured once per prefab.
-    private readonly Dictionary<GameObject, Vector3> halfExtentsCache = new();
+    // Prefab shape is the same every time, so it is measured once per prefab.
+    private readonly Dictionary<GameObject, Bounds> spawnBoundsCache = new();
     private readonly List<Vector3> pathPoints = new();
 
     private ObjectPoolManager Pools => poolManager != null ? poolManager : ObjectPoolManager.Instance;
+
+    // Game time between one zone and the next.
+    public float ZoneTime => spawnInterval;
 
     // The chosen difficulty sets these before a run starts.
     public void ApplyDifficulty(GameSettings.Difficulty difficulty)
@@ -131,6 +137,9 @@ public class RandomSpawner : MonoBehaviour
             float clearance = GetZoneClearance(nextZone);
             int thisFrame = 0;
 
+            foreach (GameObject prefab in Pools.GetList(PoolCategory.Obstacle))
+                for (int i = 0; i < minOfEachObstacle; i++) PlaceObstacle(prefab, clearance);
+
             for (int i = 0; i < obstaclesPerZone; i++)
             {
                 SpawnOneObstacle(clearance);
@@ -166,12 +175,14 @@ public class RandomSpawner : MonoBehaviour
 
     private void SpawnOneObstacle(float clearance)
     {
-        GameObject prefab = Pools.PickRandom(PoolCategory.Obstacle);
+        PlaceObstacle(Pools.PickRandom(PoolCategory.Obstacle), clearance);
+    }
+
+    private void PlaceObstacle(GameObject prefab, float clearance)
+    {
         if (prefab == null) return;
 
-        Vector3 halfExtents = GetHalfExtents(prefab) + Vector3.one * clearance;
-
-        if (TryFindFreeSpot(halfExtents, ObstacleTopMargin, out Vector3 position))
+        if (TryFindFreeSpot(GetSpawnBounds(prefab), clearance, ObstacleTopMargin, out Vector3 position))
             SpawnAndSync(prefab, position);
     }
 
@@ -185,9 +196,7 @@ public class RandomSpawner : MonoBehaviour
             GameObject prefab = Pools.PickRandom(PoolCategory.SpecialObstacle);
             if (prefab == null) return;
 
-            Vector3 halfExtents = GetHalfExtents(prefab) + Vector3.one * specialObstacleClearance;
-
-            if (!TryFindFreeSpot(halfExtents, ObstacleTopMargin, out Vector3 position)) continue;
+            if (!TryFindFreeSpot(GetSpawnBounds(prefab), specialObstacleClearance, ObstacleTopMargin, out Vector3 position)) continue;
 
             GameObject obstacle = SpawnAndSync(prefab, position);
             if (obstacle != null) SpawnRewardsInside(obstacle);
@@ -217,17 +226,18 @@ public class RandomSpawner : MonoBehaviour
         }
     }
 
-    // Scatters low-detail scenery in a ring around the zone end, just outside the play area.
+    // Scatters fast obstacles in a ring just outside the play area, over the whole zone
+    // height, so moving far out to the side is no way around the zone.
     private void SpawnEndZoneAssets()
     {
-        float centerY = zoneBottom - ZoneEndOffset;
+        float lowest = zoneBottom - ZoneEndOffset - endZoneHeight * 0.5f;
 
         for (int i = 0; i < endZoneAssetsPerZone; i++)
         {
             GameObject prefab = Pools.PickRandom(PoolCategory.EndZoneAsset);
             if (prefab == null) return;
 
-            Vector3 halfExtents = GetHalfExtents(prefab);
+            Bounds shape = GetSpawnBounds(prefab);
 
             for (int attempt = 0; attempt < maxPlacementAttempts; attempt++)
             {
@@ -236,11 +246,10 @@ public class RandomSpawner : MonoBehaviour
 
                 Vector3 position = new Vector3(
                     playerPosition.x + Mathf.Cos(angle) * distance,
-                    centerY + Random.Range(-endZoneHeight, endZoneHeight) * 0.5f,
+                    Random.Range(lowest, zoneTop),
                     playerPosition.z + Mathf.Sin(angle) * distance);
 
-                if (Physics.CheckBox(position, halfExtents, Quaternion.identity, blockingMask, QueryTriggerInteraction.Collide))
-                    continue;
+                if (!IsFree(position, shape, 0f)) continue;
 
                 SpawnAndSync(prefab, position);
                 break;
@@ -277,8 +286,8 @@ public class RandomSpawner : MonoBehaviour
             zoneEnd.SetZoneType(nextZone);
     }
 
-    // Picks random spots in the zone until one has no blocking collider inside the box.
-    private bool TryFindFreeSpot(Vector3 halfExtents, float topMargin, out Vector3 position)
+    // Picks random spots in the zone until one has no blocking collider inside the shape.
+    private bool TryFindFreeSpot(Bounds shape, float clearance, float topMargin, out Vector3 position)
     {
         float upperY = zoneTop - topMargin;
         float lowerY = upperY - zoneDepth;
@@ -288,37 +297,46 @@ public class RandomSpawner : MonoBehaviour
             position = RandomPointOnDisc(playerPosition, spawnRadius);
             position.y = Random.Range(lowerY, upperY);
 
-            if (!Physics.CheckBox(position, halfExtents, Quaternion.identity, blockingMask, QueryTriggerInteraction.Collide))
-                return true;
+            if (IsFree(position, shape, clearance)) return true;
         }
 
         position = default;
         return false;
     }
 
+    private bool IsFree(Vector3 position, Bounds shape, float clearance)
+    {
+        Vector3 halfExtents = shape.extents + Vector3.one * clearance;
+
+        return !Physics.CheckBox(position + shape.center, halfExtents, Quaternion.identity, blockingMask, QueryTriggerInteraction.Collide);
+    }
+
     private static float GetZoneClearance(ZoneType zone)
     {
         switch (zone)
         {
-            case ZoneType.Open: return 80f;
-            case ZoneType.Loose: return 60f;
-            case ZoneType.Busy: return 50f;
-            case ZoneType.Crowded: return 30f;
-            case ZoneType.Choked: return 20f;
-            default: return 20f;
+            case ZoneType.Open: return 60f;
+            case ZoneType.Loose: return 45f;
+            case ZoneType.Busy: return 30f;
+            case ZoneType.Crowded: return 20f;
+            case ZoneType.Choked: return 10f;
+            default: return 10f;
         }
     }
 
-    // Half size of a prefab, measured from its colliders (or meshes if it has none).
-    // Works with one Box Collider on the root, or several colliders on children.
-    private Vector3 GetHalfExtents(GameObject prefab)
+    // The space a prefab needs, relative to its pivot, measured from all its colliders
+    // (or meshes if it has none). Colliders can be anywhere, on the root or on children.
+    // A spinning prefab also needs the space its far corners sweep through.
+    private Bounds GetSpawnBounds(GameObject prefab)
     {
-        if (halfExtentsCache.TryGetValue(prefab, out Vector3 cached)) return cached;
+        if (spawnBoundsCache.TryGetValue(prefab, out Bounds cached)) return cached;
 
         Transform root = prefab.transform;
         Matrix4x4 toRoot = root.worldToLocalMatrix;
         Bounds bounds = default;
         bool hasBounds = false;
+        float reach = 0f;
+        float sideReach = 0f;
 
         void Add(Transform part, Bounds local)
         {
@@ -331,7 +349,10 @@ public class RandomSpawner : MonoBehaviour
                     (i & 1) == 0 ? -e.x : e.x,
                     (i & 2) == 0 ? -e.y : e.y,
                     (i & 4) == 0 ? -e.z : e.z);
-                Vector3 p = m.MultiplyPoint3x4(corner);
+                Vector3 p = Vector3.Scale(m.MultiplyPoint3x4(corner), root.localScale);
+
+                reach = Mathf.Max(reach, p.magnitude);
+                sideReach = Mathf.Max(sideReach, new Vector2(p.x, p.z).magnitude);
 
                 if (!hasBounds) { bounds = new Bounds(p, Vector3.zero); hasBounds = true; }
                 else bounds.Encapsulate(p);
@@ -361,9 +382,18 @@ public class RandomSpawner : MonoBehaviour
                 if (mf.sharedMesh != null) Add(mf.transform, mf.sharedMesh.bounds);
         }
 
-        Vector3 halfExtents = hasBounds ? Vector3.Scale(bounds.extents, root.localScale) : Vector3.one * 50f;
-        halfExtentsCache[prefab] = halfExtents;
-        return halfExtents;
+        if (!hasBounds) bounds = new Bounds(Vector3.zero, Vector3.one * 100f);
+
+        if (prefab.TryGetComponent(out PooledInteractable item))
+        {
+            if (item.SpinsFlat)
+                bounds = new Bounds(Vector3.up * bounds.center.y, new Vector3(sideReach * 2f, bounds.size.y, sideReach * 2f));
+            else if (item.SpinsAnyWay)
+                bounds = new Bounds(Vector3.zero, Vector3.one * reach * 2f);
+        }
+
+        spawnBoundsCache[prefab] = bounds;
+        return bounds;
     }
 
     // ---------------------------------------------------------------- Collectables

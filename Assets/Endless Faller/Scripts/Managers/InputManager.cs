@@ -7,6 +7,18 @@ public class InputManager : MonoBehaviour
 
     public static InputManager Instance;
 
+    // Touch devices run a pretend gamepad for the on-screen stick, so only a real one counts there.
+    public static bool HasGamepad
+    {
+        get
+        {
+            foreach (Gamepad pad in Gamepad.all)
+                if (pad.native || !MobileControls.IsTouchDevice) return true;
+
+            return false;
+        }
+    }
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -27,6 +39,9 @@ public class InputManager : MonoBehaviour
 
     public void ToggleSlowMo()
     {
+        // The A button also presses menu buttons, so slow motion waits for a live run.
+        if (!GameManager.Instance.IsPlaying || GameManager.Instance.IsPaused) return;
+
         Player.Instance.HandleStaminaDraining();
 
         if (GameManager.Instance.CanUSeSlowMo())

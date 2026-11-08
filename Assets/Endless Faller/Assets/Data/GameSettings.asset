@@ -15,39 +15,56 @@ MonoBehaviour:
   difficulties:
   - name: Easy
     zone: 1
-    obstaclesPerZone: 180
-    coinPathsPerZone: 6
+    obstaclesPerZone: 200
+    coinPathsPerZone: 1
     coinsPerPath: 10
-  - name: Medium
-    zone: 3
-    obstaclesPerZone: 240
-    coinPathsPerZone: 5
+    multiplierDrain: 0.15
+  - name: Normal
+    zone: 2
+    obstaclesPerZone: 350
+    coinPathsPerZone: 1
     coinsPerPath: 10
+    multiplierDrain: 0.1
   - name: Hard
-    zone: 5
-    obstaclesPerZone: 300
-    coinPathsPerZone: 4
+    zone: 3
+    obstaclesPerZone: 500
+    coinPathsPerZone: 2
     coinsPerPath: 8
+    multiplierDrain: 0.06
+  - name: Expert
+    zone: 4
+    obstaclesPerZone: 650
+    coinPathsPerZone: 2
+    coinsPerPath: 8
+    multiplierDrain: 0.03
+  - name: Insane
+    zone: 5
+    obstaclesPerZone: 800
+    coinPathsPerZone: 2
+    coinsPerPath: 8
+    multiplierDrain: 0.01
   normalSpeed: 3
   slowMoSpeed: 0.5
   scoreMultiplierMax: 10
-  scoreMultiplierDrain: 0.15
+  powerUpZones: 1
+  multiplierBoostPerPickup: 2
+  multiplierBoostMax: 10
   collectables:
   - type: 0
     reward:
       stamina: 2
       score: 50
-      scoreMultiplier: 0.05
+      scoreMultiplier: 0
   - type: 1
     reward:
-      stamina: 0
+      stamina: 5
       score: 100
       scoreMultiplier: 0.5
   - type: 2
     reward:
-      stamina: 10
-      score: 250
-      scoreMultiplier: 1
+      stamina: 0
+      score: 0
+      scoreMultiplier: 0
   - type: 3
     reward:
       stamina: 25

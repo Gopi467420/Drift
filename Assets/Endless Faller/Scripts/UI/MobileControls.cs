@@ -10,11 +10,13 @@ public class MobileControls : MonoBehaviour
     [Tooltip("Stick, stick base, slow-mo and pause. Hidden when there is no touchscreen.")]
     [SerializeField] private GameObject[] touchOnlyObjects;
 
+    public static bool IsTouchDevice => Application.isMobilePlatform || Touchscreen.current != null;
+
     private bool isTouchDevice;
 
     private void Awake()
     {
-        isTouchDevice = Application.isMobilePlatform || Touchscreen.current != null;
+        isTouchDevice = IsTouchDevice;
 
         foreach (GameObject control in touchOnlyObjects)
             if (control != null) control.SetActive(isTouchDevice);

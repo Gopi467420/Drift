@@ -16,6 +16,10 @@ public abstract class PooledInteractable : Interactable, IPoolable, IMovable
     public Vector3 Spin { get; set; }
     public Transform FollowTarget { get; set; }
 
+    // How it spins decides how much room it needs. Flat means around its up axis only.
+    public bool SpinsFlat => randomRotate && !randomRotateSettings.freeRotation && randomRotateSettings.axis == SpinAxis.Y;
+    public bool SpinsAnyWay => randomRotate && !SpinsFlat;
+
     public virtual void OnSpawn()
     {
         Velocity = moveInLine ? moveInLineSettings.PickVelocity() : Vector3.zero;

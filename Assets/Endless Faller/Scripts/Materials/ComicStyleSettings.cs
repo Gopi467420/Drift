@@ -4,7 +4,7 @@ using UnityEngine;
 // One place to tune the comic look of every Custom/ComicLit material.
 // Edit the ComicStyle asset (Assets/Endless Faller/Materials) - changes show live.
 // Materials only choose a Base Color and whether Halftone / Glitch is on.
-[CreateAssetMenu(fileName = "ComicStyle", menuName = "Endless Faller/Comic Style Settings")]
+[CreateAssetMenu(fileName = "ComicStyle", menuName = "Drift/Comic Style Settings")]
 public class ComicStyleSettings : ScriptableObject
 {
     [System.Serializable]

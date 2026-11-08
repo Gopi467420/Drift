@@ -19,6 +19,10 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI scoreMultiplierUI;
     [SerializeField] private TextMeshProUGUI staminaUI;
     [SerializeField] private TextMeshProUGUI rewardsAchievements;
+    [Tooltip("Countdown of the running power ups.")]
+    [SerializeField] private TextMeshProUGUI powerUpsUI;
+    [Tooltip("The big line in the middle when a power up is picked up.")]
+    [SerializeField] private PowerPopup powerPopup;
 
     [Tooltip("Seconds the red vignette takes to close in.")]
     public float damageFadeDuration = 0.35f;
@@ -30,6 +34,9 @@ public class UIManager : MonoBehaviour
     public UnityEvent<float> OnUpdateScoreMultUI;
 
     private RewardPopups rewardPopups;
+    private int shownInvincibleSeconds, shownBoost, shownBoostSeconds;
+
+    public GameObject PauseMenu => pauseMenu;
 
     private void Awake()
     {
@@ -65,6 +72,35 @@ public class UIManager : MonoBehaviour
         if (value >= 1_000_000f) return (value / 1_000_000f).ToString("0.#") + "M";
         if (value >= 1_000f) return (value / 1_000f).ToString("0.#") + "k";
         return value.ToString("0.#");
+    }
+
+    public void ShowPowerPopup(string message, Color color)
+    {
+        powerPopup.Show(message, color);
+    }
+
+    // Runs every frame, so the text only changes when a whole second passes.
+    public void ShowPowerUps(float invincibleSeconds, float boost, float boostSeconds)
+    {
+        int invincible = Mathf.CeilToInt(invincibleSeconds);
+        int boostLeft = Mathf.CeilToInt(boostSeconds);
+        int boostSize = Mathf.RoundToInt(boost);
+
+        if (invincible == shownInvincibleSeconds && boostLeft == shownBoostSeconds && boostSize == shownBoost) return;
+
+        shownInvincibleSeconds = invincible;
+        shownBoostSeconds = boostLeft;
+        shownBoost = boostSize;
+
+        string text = invincible > 0 ? "INVINCIBLE " + invincible : "";
+
+        if (boostLeft > 0)
+        {
+            if (text.Length > 0) text += "\n";
+            text += "SCORE X" + boostSize + "  " + boostLeft;
+        }
+
+        powerUpsUI.text = text;
     }
 
     public void PlayDamageSequence()
@@ -145,6 +181,6 @@ public class UIManager : MonoBehaviour
 
     public void QuitGame()
     {
-        Application.Quit();
+        WebPage.Quit();
     }
 }

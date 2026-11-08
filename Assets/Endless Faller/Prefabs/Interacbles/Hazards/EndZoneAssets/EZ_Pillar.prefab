@@ -188,8 +188,8 @@ MonoBehaviour:
   moveInLine: 1
   moveInLineSettings:
     axis: 2
-    speedMin: 100
-    speedMax: 150
+    speedMin: 900
+    speedMax: 1300
   randomRotate: 0
   randomRotateSettings:
     freeRotation: 0

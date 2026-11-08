@@ -115,3 +115,7 @@ InitTestScene*.unity*
 # Build output from the small tools in Tools/
 /Tools/**/bin/
 /Tools/**/obj/
+
+# Unity editor caches that do not belong in the repo
+/GeneratedAssets/
+/ProfilerCaptures/

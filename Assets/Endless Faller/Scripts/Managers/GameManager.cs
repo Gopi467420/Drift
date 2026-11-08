@@ -18,6 +18,7 @@ public class GameManager : MonoBehaviour
         public int zonesCleared;
         public int pickups;
         public float bestMultiplier;
+        public string modeName;
     }
 
     private const string DifficultyKey = "Difficulty";
@@ -32,6 +33,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private GameSettings settings;
     [SerializeField] private DeathSequence deathSequence;
     [SerializeField] private RandomSpawner spawner;
+    [SerializeField] private AttractionEffect attraction;
 
     [Header("Camera refrences")]
     [SerializeField] private CinemachineBasicMultiChannelPerlin cameraShakeComponent;
@@ -53,9 +55,22 @@ public class GameManager : MonoBehaviour
     private int pickups;
     private GameObject lastHitObject;
 
+    private int difficultyIndex;
+    // Real seconds played in each mode this run. The run counts for the one played longest.
+    private float[] modeTime;
+
+    // Game time left on each power up. The boost multiplies on top of the score multiplier.
+    private float multiplierBoost;
+    private float boostTimeLeft;
+    private float invincibleTimeLeft;
+
     public GameState State { get; private set; }
     public bool IsPlaying => State == GameState.Playing;
-    public GameSettings.Difficulty CurrentDifficulty => settings.difficulties[PlayerPrefs.GetInt(DifficultyKey, 1)];
+    public GameSettings.Difficulty CurrentDifficulty => settings.difficulties[difficultyIndex];
+    public int CurrentDifficultyIndex => difficultyIndex;
+    public int DifficultyCount => settings.difficulties.Length;
+    public string GetDifficultyName(int index) { return settings.difficulties[index].name; }
+    public bool IsInvincible => invincibleTimeLeft > 0f;
     public float HighScore => PlayerPrefs.GetFloat(HighScoreKey, 0f);
 
     // The one place game speed lives. Nothing else writes to Time.timeScale.
@@ -73,6 +88,9 @@ public class GameManager : MonoBehaviour
 
         Instance = this;
 
+        difficultyIndex = Mathf.Clamp(PlayerPrefs.GetInt(DifficultyKey, 1), 0, settings.difficulties.Length - 1);
+        modeTime = new float[settings.difficulties.Length];
+
         GameSpeed = settings.normalSpeed;
         ApplyGameSpeed();
     }
@@ -89,14 +107,20 @@ public class GameManager : MonoBehaviour
 
     private void Update()
     {
-        if (IsPlaying) DrainScoreMultiplier();
+        if (!IsPlaying) return;
+
+        if (!IsPaused) modeTime[difficultyIndex] += Time.unscaledDeltaTime;
+
+        DrainScoreMultiplier();
+        TickPowerUps();
     }
 
     // ------------------------------------------------------------ Run flow
 
     public void SetDifficulty(int index)
     {
-        PlayerPrefs.SetInt(DifficultyKey, Mathf.Clamp(index, 0, settings.difficulties.Length - 1));
+        difficultyIndex = Mathf.Clamp(index, 0, settings.difficulties.Length - 1);
+        PlayerPrefs.SetInt(DifficultyKey, difficultyIndex);
         PlayerPrefs.Save();
 
         // Changed from the pause menu, it applies from the next zone.
@@ -133,6 +157,7 @@ public class GameManager : MonoBehaviour
     {
         State = GameState.Playing;
         runStartTime = Time.unscaledTime;
+        System.Array.Clear(modeTime, 0, modeTime.Length);
     }
 
     public void RestartRun()
@@ -151,6 +176,7 @@ public class GameManager : MonoBehaviour
 
         // The power surge is an escape window: nothing can hurt the player during it.
         if (ComicEffects.Instance != null && ComicEffects.Instance.IsSurging) return;
+        if (IsInvincible) return;
 
         lastHitObject = hitObject;
         OnPlayerTakeDamage.Invoke();
@@ -168,7 +194,8 @@ public class GameManager : MonoBehaviour
             seconds = Time.unscaledTime - runStartTime,
             zonesCleared = zonesCleared,
             pickups = pickups,
-            bestMultiplier = bestMultiplier
+            bestMultiplier = bestMultiplier,
+            modeName = settings.difficulties[MostPlayedMode()].name
         };
     }
 
@@ -207,8 +234,60 @@ public class GameManager : MonoBehaviour
         if (!IsPlaying) return;
 
         pickups++;
+
+        switch (type)
+        {
+            case CollectableType.Multiplier:
+                multiplierBoost = Mathf.Min(multiplierBoost + settings.multiplierBoostPerPickup, settings.multiplierBoostMax);
+                boostTimeLeft = PowerUpTime;
+                UIManager.Instance.ShowPowerPopup("SCORE X" + Mathf.RoundToInt(multiplierBoost), new Color(0.2f, 0.8f, 1f));
+                break;
+
+            case CollectableType.Invincibility:
+                invincibleTimeLeft = PowerUpTime;
+                UIManager.Instance.ShowPowerPopup("INVINCIBLE " + Mathf.RoundToInt(PowerUpTime / settings.normalSpeed) + "S", new Color(0.85f, 0.4f, 1f));
+                break;
+
+            case CollectableType.Attraction:
+                attraction.Play();
+                UIManager.Instance.ShowPowerPopup("MAGNET!", new Color(1f, 0.42f, 0.36f));
+                break;
+        }
+
         UpdateStats(settings.GetCollectableReward(type));
     }
+
+    // Switching mode in the pause menu is allowed, so the run counts for where most of it
+    // was played. A quick switch to an easier mode can't claim a harder board, or the other way.
+    private int MostPlayedMode()
+    {
+        int best = difficultyIndex;
+
+        for (int i = 0; i < modeTime.Length; i++)
+            if (modeTime[i] > modeTime[best]) best = i;
+
+        return best;
+    }
+
+    // Game time, like the zones, so slow motion stretches a power up as well.
+    private float PowerUpTime => settings.powerUpZones * spawner.ZoneTime;
+
+    private void TickPowerUps()
+    {
+        invincibleTimeLeft = Mathf.Max(invincibleTimeLeft - Time.deltaTime, 0f);
+        boostTimeLeft = Mathf.Max(boostTimeLeft - Time.deltaTime, 0f);
+
+        if (boostTimeLeft <= 0f) multiplierBoost = 0f;
+
+        // Shown in seconds at normal speed, which is what the player feels.
+        UIManager.Instance.ShowPowerUps(
+            invincibleTimeLeft / settings.normalSpeed,
+            multiplierBoost,
+            boostTimeLeft / settings.normalSpeed);
+    }
+
+    // The multiplier score really uses, with any boost on top.
+    private float EffectiveMultiplier => multiplierBoost > 0f ? Mathf.Max(scoreMultiplier, 1f) * multiplierBoost : scoreMultiplier;
 
     public void GrantZoneRewards(ZoneType zoneType)
     {
@@ -225,14 +304,14 @@ public class GameManager : MonoBehaviour
         float scoreBefore = score;
 
         scoreMultiplier = Mathf.Min(scoreMultiplier + rewards.GetScoreMult(), settings.scoreMultiplierMax);
-        bestMultiplier = Mathf.Max(bestMultiplier, scoreMultiplier);
+        bestMultiplier = Mathf.Max(bestMultiplier, EffectiveMultiplier);
 
         // The multiplier only ever adds, so points still count at x0.
-        score += Mathf.Max(scoreMultiplier, 1f) * rewards.GetScore();
+        score += Mathf.Max(EffectiveMultiplier, 1f) * rewards.GetScore();
         Player.Instance.GetStaminaComponent().GainStamina(rewards.GetStamina());
 
         float staminaNow = Player.Instance.GetStaminaComponent().GetStamina();
-        Rewards updatedStats = new Rewards(staminaNow, score, scoreMultiplier);
+        Rewards updatedStats = new Rewards(staminaNow, score, EffectiveMultiplier);
 
         //Update ui
         UIManager.Instance.OnUpdateStats.Invoke(updatedStats);
@@ -244,8 +323,8 @@ public class GameManager : MonoBehaviour
 
     private void DrainScoreMultiplier()
     {
-        scoreMultiplier = Mathf.Clamp(scoreMultiplier - Time.deltaTime * settings.scoreMultiplierDrain, 0f, settings.scoreMultiplierMax);
-        UIManager.Instance.OnUpdateScoreMultUI.Invoke(scoreMultiplier);
+        scoreMultiplier = Mathf.Clamp(scoreMultiplier - Time.deltaTime * CurrentDifficulty.multiplierDrain, 0f, settings.scoreMultiplierMax);
+        UIManager.Instance.OnUpdateScoreMultUI.Invoke(EffectiveMultiplier);
     }
 
     // ------------------------------------------------------------ Player events
@@ -303,7 +382,7 @@ public class GameManager : MonoBehaviour
         cameraShakeComponent.FrequencyGain = targetFrequency;
     }
 
-    public float GetScoreMultiplier() { return scoreMultiplier; }
+    public float GetScoreMultiplier() { return EffectiveMultiplier; }
     public Vector3 GetPlayerPosition() { return Player.Instance.transform.position; }
     public bool CanUSeSlowMo() { return Player.Instance.GetStaminaComponent().GetStamina() > 0; }
 

@@ -51,7 +51,7 @@ public class MusicPlayer : MonoBehaviour
         bool isOnMenu = game.State == GameManager.GameState.Menu;
         bool isOnGameOver = MenuScreens.Instance != null && MenuScreens.Instance.IsShowingGameOver;
 
-        FadeMenuMusic(isOnMenu || game.IsPaused || isOnGameOver);
+        FadeMenuMusic((isOnMenu && !SplashScreen.IsShowing) || game.IsPaused || isOnGameOver);
 
         if (isOnMenu) return;
 

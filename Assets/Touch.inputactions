@@ -70,6 +70,17 @@
             "bindings": [
                 {
                     "name": "",
+                    "id": "c6a35cd9-0739-426d-be1b-0d75e4f9cd7e",
+                    "path": "<Gamepad>/dpad",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Gamepad",
+                    "action": "Move",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "978bfe49-cc26-4a3d-ab7b-7d7a29327403",
                     "path": "<Gamepad>/leftStick",
                     "interactions": "",
@@ -314,6 +325,17 @@
                     "name": "",
                     "id": "5a83efaa-cefa-4012-b1c6-edb3c74ca1ad",
                     "path": "<Gamepad>/rightTrigger",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Gamepad",
+                    "action": "Dash",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "ea23e5dd-e32e-43f8-970c-20eb72d64540",
+                    "path": "<Gamepad>/buttonSouth",
                     "interactions": "",
                     "processors": "",
                     "groups": ";Gamepad",

@@ -14,7 +14,7 @@ namespace Enums
 
     public enum CollectableType
     {
-       C1, C2, C3, C4
+       Coin, Multiplier, Invincibility, Attraction
 
     }
 

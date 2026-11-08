@@ -36,8 +36,9 @@ public class Player : MonoBehaviour
     {
         var parts = new System.Collections.Generic.List<MeshRenderer>();
 
+        // Only the parts switched on in the prefab, so a mesh turned off there stays hidden.
         foreach (MeshRenderer part in GetComponentsInChildren<MeshRenderer>(true))
-            if (part.GetComponentInParent<Camera>(true) == null) parts.Add(part);
+            if (part.enabled && part.GetComponentInParent<Camera>(true) == null) parts.Add(part);
 
         VisibleParts = parts.ToArray();
 

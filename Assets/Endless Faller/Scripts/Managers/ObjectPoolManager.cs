@@ -119,7 +119,7 @@ public class ObjectPoolManager : MonoBehaviour
 
     // ------------------------------------------------------------ Internals
 
-    private GameObject[] GetList(PoolCategory category)
+    public GameObject[] GetList(PoolCategory category)
     {
         switch (category)
         {
@@ -150,7 +150,7 @@ public class ObjectPoolManager : MonoBehaviour
     }
 
     // One pool per prefab, created the first time it is needed.
-    private ObjectPool GetPool(GameObject prefab)
+    public ObjectPool GetPool(GameObject prefab)
     {
         if (!poolByPrefab.TryGetValue(prefab, out ObjectPool pool))
         {

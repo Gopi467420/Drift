@@ -2,8 +2,8 @@ using Enums;
 using UnityEngine;
 
 // All the numbers that tune a run, in one asset, so they change without touching code.
-// Create one with Assets > Create > Endless Faller > Game Settings.
-[CreateAssetMenu(fileName = "GameSettings", menuName = "Endless Faller/Game Settings")]
+// Create one with Assets > Create > Drift > Game Settings.
+[CreateAssetMenu(fileName = "GameSettings", menuName = "Drift/Game Settings")]
 public class GameSettings : ScriptableObject
 {
     [System.Serializable]
@@ -49,14 +49,18 @@ public class GameSettings : ScriptableObject
         [Tooltip("How many coin paths each zone gets.")]
         [Min(0)] public int coinPathsPerZone;
         [Min(1)] public int coinsPerPath;
+        [Tooltip("How much the score multiplier drops per second. Harder modes keep it longer, as their reward.")]
+        [Min(0f)] public float multiplierDrain;
     }
 
     [Header("Difficulty")]
     public Difficulty[] difficulties =
     {
-        new Difficulty { name = "Easy", zone = ZoneType.Open, obstaclesPerZone = 180, coinPathsPerZone = 6, coinsPerPath = 10 },
-        new Difficulty { name = "Medium", zone = ZoneType.Busy, obstaclesPerZone = 240, coinPathsPerZone = 5, coinsPerPath = 10 },
-        new Difficulty { name = "Hard", zone = ZoneType.Choked, obstaclesPerZone = 300, coinPathsPerZone = 4, coinsPerPath = 8 }
+        new Difficulty { name = "Easy", zone = ZoneType.Open, obstaclesPerZone = 200, coinPathsPerZone = 1, coinsPerPath = 10, multiplierDrain = 0.15f },
+        new Difficulty { name = "Normal", zone = ZoneType.Loose, obstaclesPerZone = 350, coinPathsPerZone = 1, coinsPerPath = 10, multiplierDrain = 0.1f },
+        new Difficulty { name = "Hard", zone = ZoneType.Busy, obstaclesPerZone = 500, coinPathsPerZone = 2, coinsPerPath = 8, multiplierDrain = 0.06f },
+        new Difficulty { name = "Expert", zone = ZoneType.Crowded, obstaclesPerZone = 650, coinPathsPerZone = 2, coinsPerPath = 8, multiplierDrain = 0.03f },
+        new Difficulty { name = "Insane", zone = ZoneType.Choked, obstaclesPerZone = 800, coinPathsPerZone = 2, coinsPerPath = 8, multiplierDrain = 0.01f }
     };
 
     [Header("Game Speed")]
@@ -67,16 +71,21 @@ public class GameSettings : ScriptableObject
 
     [Header("Score Multiplier")]
     public float scoreMultiplierMax = 10f;
-    [Tooltip("How much the multiplier drops per second.")]
-    public float scoreMultiplierDrain = 0.15f;
+
+    [Header("Power Ups")]
+    [Tooltip("How many zones a multiplier or invincibility pickup lasts.")]
+    [Min(0.1f)] public float powerUpZones = 1f;
+    [Tooltip("What each multiplier pickup adds to the boost: x2, then x4, then x6.")]
+    [Min(1f)] public float multiplierBoostPerPickup = 2f;
+    [Min(1f)] public float multiplierBoostMax = 10f;
 
     [Header("Rewards")]
     public CollectableReward[] collectables =
     {
-        new CollectableReward(CollectableType.C1, new RewardValues(2f, 50f, 0.05f)),
-        new CollectableReward(CollectableType.C2, new RewardValues(0f, 100f, 0.5f)),
-        new CollectableReward(CollectableType.C3, new RewardValues(10f, 250f, 1f)),
-        new CollectableReward(CollectableType.C4, new RewardValues(25f, 500f, 1f))
+        new CollectableReward(CollectableType.Coin, new RewardValues(2f, 50f, 0f)),
+        new CollectableReward(CollectableType.Multiplier, new RewardValues(5f, 100f, 0.5f)),
+        new CollectableReward(CollectableType.Invincibility, new RewardValues(0f, 0f, 0f)),
+        new CollectableReward(CollectableType.Attraction, new RewardValues(25f, 500f, 1f))
     };
 
     [Tooltip("Multiplied by the zone's level: Open is 1, Loose is 2, up to Choked at 5.")]

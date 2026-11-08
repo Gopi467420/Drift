@@ -205,6 +205,9 @@ public class RewardPopups : MonoBehaviour
             clone.name = "Reward Line " + i;
             clone.enabled = true;
             Destroy(clone.GetComponent<RewardPopups>());
+
+            // New objects land at the end of the list, which would draw them over the pause menu.
+            clone.transform.SetSiblingIndex(transform.GetSiblingIndex());
             clone.gameObject.SetActive(false);
 
             free.Push(new Line { text = clone });

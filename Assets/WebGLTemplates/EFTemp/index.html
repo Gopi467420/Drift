@@ -13,7 +13,7 @@
 
     <!-- ADDED: switches for the touch problem -->
     <script>
-        var DEBUG_TOUCH = true;        // shows a green readout of pointer events. Set to false for release.
+        var DEBUG_TOUCH = false;       // shows a green readout of pointer events. Set to false for release.
         var APPLY_TOUCH_FIX = false;   // step 1: false (diagnose). Step 2: true (apply the fix).
     </script>
 
@@ -186,6 +186,7 @@
 #if BACKGROUND_FILENAME
       canvas.style.background = "url('" + buildUrl + "/{{{ BACKGROUND_FILENAME.replace(/'/g, '%27') }}}') center / cover";
 #endif
+      function startGame() {
       document.querySelector("#unity-loading-bar").style.display = "block";
 
       var script = document.createElement("script");
@@ -246,6 +247,30 @@
             };
 
       document.body.appendChild(script);
+      }
+
+      // Quit in the game reloads the page with this flag set, so the page comes back
+      // stopped with a Play button, instead of starting the game again by itself.
+      var wasQuit = false;
+      try {
+        wasQuit = sessionStorage.getItem("drift-quit") === "1";
+        sessionStorage.removeItem("drift-quit");
+      } catch (e) {}
+
+      if (wasQuit) {
+        var play = document.createElement("button");
+        play.textContent = "PLAY";
+        play.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-2deg);" +
+          "padding:18px 64px;font:bold 40px sans-serif;letter-spacing:4px;color:#0b0510;background:#ffe21a;" +
+          "border:5px solid #0b0510;box-shadow:10px 10px 0 #0b0510;cursor:pointer;z-index:10;";
+        document.querySelector("#unity-container").appendChild(play);
+        play.onclick = () => {
+          play.remove();
+          startGame();
+        };
+      } else {
+        startGame();
+      }
 
     </script>
 </body>

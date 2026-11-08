@@ -36,6 +36,34 @@ public class DeathSequence : MonoBehaviour
         Shader.SetGlobalFloat(BlackoutID, 0f);
     }
 
+    // The look of the death: black world, red closing in. The splash screen uses it too.
+    public void EnterBlack()
+    {
+        foreach (GameObject layer in backgroundLayers) layer.SetActive(false);
+
+        Shader.SetGlobalFloat(BlackoutID, 1f);
+        UIManager.Instance.PlayDamageSequence();
+    }
+
+    // The red clears at once and the sky breaks back in.
+    public IEnumerator LeaveBlack()
+    {
+        UIManager.Instance.ClearDamage();
+
+        foreach (GameObject layer in backgroundLayers) layer.SetActive(true);
+
+        float age = 0f;
+
+        while (age < glitchBackTime)
+        {
+            age += Time.unscaledDeltaTime;
+            Shader.SetGlobalFloat(BlackoutID, 1f - Mathf.Clamp01(age / glitchBackTime));
+            yield return null;
+        }
+
+        Shader.SetGlobalFloat(BlackoutID, 0f);
+    }
+
     public void Play(GameObject hitObject, GameManager.RunStats stats)
     {
         StartCoroutine(Run(hitObject, stats));
@@ -46,12 +74,10 @@ public class DeathSequence : MonoBehaviour
         Renderer[] hitParts = hitObject != null ? hitObject.GetComponentsInChildren<Renderer>() : new Renderer[0];
 
         HideEverythingExcept(hitObject);
-        foreach (GameObject layer in backgroundLayers) layer.SetActive(false);
+        EnterBlack();
 
-        Shader.SetGlobalFloat(BlackoutID, 1f);
         MenuScreens.Instance.SetHudVisible(false);
         UIManager.Instance.ClearRewards();
-        UIManager.Instance.PlayDamageSequence();
         GameManager.Instance.SetHitStop(0f);
 
         ouchCaption.gameObject.SetActive(true);
@@ -75,21 +101,8 @@ public class DeathSequence : MonoBehaviour
         GameManager.Instance.SetHitStop(1f);
 
         yield return GlitchOut(hitParts);
+        yield return LeaveBlack();
 
-        UIManager.Instance.ClearDamage();
-
-        foreach (GameObject layer in backgroundLayers) layer.SetActive(true);
-
-        age = 0f;
-
-        while (age < glitchBackTime)
-        {
-            age += Time.unscaledDeltaTime;
-            Shader.SetGlobalFloat(BlackoutID, 1f - Mathf.Clamp01(age / glitchBackTime));
-            yield return null;
-        }
-
-        Shader.SetGlobalFloat(BlackoutID, 0f);
         MenuScreens.Instance.ShowGameOver(stats);
     }
 
